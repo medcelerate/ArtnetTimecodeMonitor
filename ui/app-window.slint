@@ -1,6 +1,7 @@
 import { ComboBox, Switch } from "std-widgets.slint";
 import "7segment.ttf";
 export component AppWindow inherits Window {
+    always-on-top: true;
     in property <string> timecode: "00:00:00:00";
     in property <string> status: "Idle";
     in property <string> fr: "0";
