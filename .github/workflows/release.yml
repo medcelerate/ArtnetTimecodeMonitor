@@ -25,6 +25,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      # Compile cache: the Synology (WebDAV) when this runner can reach it
+      # (self-hosted, home LAN), otherwise GitHub's Actions cache. Probed
+      # once: sccache fails the *build*, not just the cache, when its backend
+      # is unreachable, so the wrapper is only armed if a backend answered.
+      - name: Enable sccache
+        shell: bash
+        env:
+          SCCACHE_WEBDAV_ENDPOINT: ${{ secrets.SCCACHE_WEBDAV_ENDPOINT }}
+          SCCACHE_WEBDAV_USERNAME: ${{ secrets.SCCACHE_WEBDAV_USERNAME }}
+          SCCACHE_WEBDAV_PASSWORD: ${{ secrets.SCCACHE_WEBDAV_PASSWORD }}
+        run: |
+          sccache --stop-server >/dev/null 2>&1 || true
+          if [ -n "$SCCACHE_WEBDAV_ENDPOINT" ] && sccache --start-server >/dev/null 2>&1; then
+            {
+              echo "RUSTC_WRAPPER=sccache"
+              echo "SCCACHE_WEBDAV_ENDPOINT=$SCCACHE_WEBDAV_ENDPOINT"
+              echo "SCCACHE_WEBDAV_USERNAME=$SCCACHE_WEBDAV_USERNAME"
+              echo "SCCACHE_WEBDAV_PASSWORD=$SCCACHE_WEBDAV_PASSWORD"
+              echo "CARGO_INCREMENTAL=0"
+            } >> "$GITHUB_ENV"
+            echo "sccache: WebDAV cache"
+          else
+            sccache --stop-server >/dev/null 2>&1 || true
+            if env -u SCCACHE_WEBDAV_ENDPOINT -u SCCACHE_WEBDAV_USERNAME -u SCCACHE_WEBDAV_PASSWORD \
+                 SCCACHE_GHA_ENABLED=true sccache --start-server >/dev/null 2>&1; then
+              {
+                echo "RUSTC_WRAPPER=sccache"
+                echo "SCCACHE_GHA_ENABLED=true"
+                echo "CARGO_INCREMENTAL=0"
+              } >> "$GITHUB_ENV"
+              echo "sccache: GitHub Actions cache"
+            else
+              echo "::warning::no sccache backend reachable; building without cache"
+            fi
+          fi
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
